@@ -1,0 +1,72 @@
+# Pruebas automáticas en cada subida a main y en cada propuesta (incluidas las
+# de Dependabot). Render despliega en cuanto llega algo a main; esto avisa si
+# lo que llega rompe alguna regla de la casa (dinero, permisos, calendario…).
+#
+# Dos trabajos:
+#   - logica: `npm test`, sin base de datos ni red.
+#   - api:    arranca el servidor de verdad contra un PostgreSQL vacío y le
+#             pasa la batería extremo a extremo (test/http/api.js). Es lo que
+#             pilla una actualización de Express que rompa las rutas, cosa que
+#             las pruebas de lógica no ven.
+name: Pruebas
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  logica:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      # Falla si aparece un fallo de seguridad grave o crítico en alguna
+      # dependencia, aunque nadie haya tocado el código.
+      - run: npm audit --audit-level=high
+
+  api:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_PASSWORD: prueba
+          POSTGRES_DB: casa
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres -d casa"
+          --health-interval 2s --health-timeout 5s --health-retries 20
+    env:
+      DATABASE_URL: postgres://postgres:prueba@localhost:5432/casa?sslmode=disable
+      CODIGO_CASA: PRUE-BA12-3456
+      PORT: "3000"
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Arrancar el servidor
+        run: |
+          node server.js > servidor.log 2>&1 &
+          for i in $(seq 1 30); do
+            curl -sf http://localhost:3000/api/health >/dev/null && { echo "Servidor listo"; exit 0; }
+            sleep 1
+          done
+          echo "::error::El servidor no arrancó"; cat servidor.log; exit 1
+      - run: npm run test:http
+      - name: Registro del servidor
+        if: always()
+        run: cat servidor.log

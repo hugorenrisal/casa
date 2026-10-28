@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Desplegar en Render paso a paso
+    url: https://github.com/hugorenrisal/casa/blob/main/docs/DESPLIEGUE-EN-RENDER.md
+    about: La mayoría de las dudas de instalación están resueltas aquí.
+  - name: Fallo de seguridad
+    url: https://github.com/hugorenrisal/casa/security/advisories/new
+    about: Avísalo en privado, no en un issue público.

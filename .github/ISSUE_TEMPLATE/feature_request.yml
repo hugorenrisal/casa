@@ -1,0 +1,30 @@
+name: Propuesta
+description: Una idea para mejorar Casa.
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problema
+    attributes:
+      label: Qué problema resuelve
+      description: La situación en casa que hoy no cubre la app.
+    validations:
+      required: true
+  - type: textarea
+    id: propuesta
+    attributes:
+      label: Propuesta
+      description: Cómo te imaginas que funcione. Bocetos o capturas de `/demo` ayudan.
+    validations:
+      required: true
+  - type: textarea
+    id: alternativas
+    attributes:
+      label: Alternativas
+      description: Otras formas de resolverlo que hayas pensado.
+  - type: checkboxes
+    id: revisado
+    attributes:
+      label: Antes de enviar
+      options:
+        - label: He mirado la [hoja de ruta](../blob/main/docs/ROADMAP.md) y no está ya prevista.
+          required: true

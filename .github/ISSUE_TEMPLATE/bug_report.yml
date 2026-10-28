@@ -1,0 +1,51 @@
+name: Informe de error
+description: Algo no funciona como dice la documentación.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Gracias por avisar. **No pegues datos reales de tu casa** (nombres, dirección del
+        despliegue, código de casa ni copias del estado). Si es un fallo de seguridad, usa
+        Security → Report a vulnerability en lugar de este formulario.
+  - type: textarea
+    id: que-pasa
+    attributes:
+      label: Qué pasa
+      description: Qué esperabas y qué ocurre en su lugar.
+    validations:
+      required: true
+  - type: textarea
+    id: pasos
+    attributes:
+      label: Cómo reproducirlo
+      description: Pasos mínimos. Si se reproduce en `/demo`, mejor.
+      placeholder: |
+        1. Abrir /demo
+        2. Elegir el perfil …
+        3. …
+    validations:
+      required: true
+  - type: dropdown
+    id: donde
+    attributes:
+      label: Dónde
+      options:
+        - Móvil (perfil de hijo)
+        - Escritorio (panel de los padres)
+        - Servidor / API
+        - Despliegue en Render
+        - Otro
+    validations:
+      required: true
+  - type: input
+    id: entorno
+    attributes:
+      label: Entorno
+      placeholder: "Navegador y sistema (p. ej. Safari iOS 18), versión de Node si es el servidor"
+  - type: textarea
+    id: registros
+    attributes:
+      label: Registros
+      description: Errores de la consola del navegador o de Render → Logs, sin datos personales.
+      render: text

@@ -1,0 +1,26 @@
+# Blueprint de Render: describe el servicio para desplegarlo con un clic
+# (botón «Deploy to Render» del README o Render → New → Blueprint).
+#
+# Paso a paso en docs/DESPLIEGUE-EN-RENDER.md.
+# Especificación: https://render.com/docs/blueprint-spec
+
+services:
+  - type: web
+    name: casa
+    runtime: node
+    plan: free
+    region: frankfurt          # no se puede cambiar después de crearlo
+    buildCommand: npm ci
+    startCommand: npm start
+    healthCheckPath: /api/health
+    autoDeployTrigger: commit  # cada push a main despliega
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: TZ_FAMILIA
+        value: Europe/Madrid
+      # Render los pide al crear el Blueprint (sync: false = no se guardan aquí).
+      - key: DATABASE_URL      # cadena de conexión de Neon (o cualquier PostgreSQL)
+        sync: false
+      - key: CODIGO_CASA       # código de acceso de la casa (muy recomendado)
+        sync: false

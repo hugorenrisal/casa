@@ -1,0 +1,68 @@
+# Recordatorio de la tarde: a cada hijo, lo que le toca hoy; a los papás, lo
+# que espera su visto bueno. Llega a los móviles que tengan los avisos
+# activados.
+#
+# Lo dispara GitHub porque el servidor gratis de Render se duerme cuando nadie
+# lo usa y no puede despertarse solo a una hora. La llamada lo despierta.
+#
+# GitHub RETRASA las tareas programadas cuando va cargado, y mucho: en octubre
+# de 2026 uno programado a las 18:00 llegó a las 22:10. Por eso:
+#   - se intenta cinco veces a lo largo de la tarde, en minutos poco
+#     habituales (a las horas en punto GitHub va más saturado),
+#   - el servidor solo manda dentro de la ventana 17:00–21:30 (hora de Madrid)
+#     y como mucho UNO al día: vale el primer intento que llegue a tiempo; los
+#     demás no hacen nada; si todos llegan tarde, ese día no se avisa.
+#
+# Opcional. Para activarlo (ver docs/DESPLIEGUE-EN-RENDER.md, paso 7):
+#   GitHub → Settings → Secrets and variables → Actions
+#     - Variable CASA_URL     → https://<tu-servicio>.onrender.com
+#     - Secreto  CODIGO_CASA  → el mismo valor que en Render (si lo usas)
+# Sin la variable CASA_URL el trabajo se omite y no hace nada.
+# Lanzado a mano (Actions → «Recordatorio de la tarde» → Run workflow) se salta
+# la ventana horaria, para poder probarlo; sigue sin mandar dos el mismo día.
+name: Recordatorio de la tarde
+
+on:
+  schedule:
+    # Hora UTC. En invierno Madrid va una hora por delante; en verano, dos.
+    - cron: "7 15 * * *"
+    - cron: "41 15 * * *"
+    - cron: "13 16 * * *"
+    - cron: "47 16 * * *"
+    - cron: "19 17 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  recordar:
+    if: ${{ vars.CASA_URL != '' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      CASA_URL: ${{ vars.CASA_URL }}
+      CODIGO_CASA: ${{ secrets.CODIGO_CASA }}
+      FORZAR: ${{ github.event_name == 'workflow_dispatch' && '?forzar=1' || '' }}
+    steps:
+      - name: Mandar el recordatorio
+        run: |
+          set -euo pipefail
+          code=000
+          for i in 1 2 3; do
+            code=$(curl -sS -o respuesta.json -w '%{http_code}' --max-time 120 -X POST \
+              -H "X-Casa: ${CODIGO_CASA}" -H "X-Perfil: papas" \
+              "$CASA_URL/api/push/recordatorios$FORZAR") || code=000
+            # Un 401 no se arregla reintentando (y cada intento cuenta para el
+            # bloqueo por fuerza bruta): se corta y se avisa.
+            if [ "$code" = "200" ] || [ "$code" = "401" ]; then break; fi
+            echo "Intento $i: HTTP $code. Reintentando…"
+            sleep 20
+          done
+          cat respuesta.json || true
+          echo
+          if [ "$code" = "401" ]; then
+            echo "::error::La casa pide código y el secreto CODIGO_CASA falta o no coincide con el de Render."
+            exit 1
+          fi
+          [ "$code" = "200" ] || { echo "::error::El servidor respondió HTTP $code."; exit 1; }

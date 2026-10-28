@@ -1,0 +1,115 @@
+# Copia de seguridad diaria FUERA del servidor (opcional).
+#
+# El servidor ya guarda una copia al día dentro de su base de datos (y se
+# restaura con un clic desde el Dashboard). Esta es la otra mitad: si un día se
+# perdiera la base de datos entera, aquí queda una copia por día.
+#
+# Cada noche descarga el estado de la casa y lo guarda en la rama `copias` de
+# este repositorio:
+#     copias/AAAA-MM-DD.json   una por día
+#     ultima.json              siempre la más reciente
+#
+# ⚠️ SOLO EN REPOSITORIOS PRIVADOS. La copia contiene los datos reales de la
+# casa (nombres, horarios, puntos). Si el repositorio es público, el trabajo se
+# niega a ejecutarse.
+#
+# Para activarla (ver docs/DESPLIEGUE-EN-RENDER.md, paso 7):
+#   GitHub → Settings → Secrets and variables → Actions
+#     - Variable CASA_URL     → https://<tu-servicio>.onrender.com
+#     - Secreto  CODIGO_CASA  → el mismo valor que en Render (si lo usas)
+# Sin la variable CASA_URL el trabajo se omite y no hace nada.
+#
+# Se puede lanzar a mano: pestaña Actions → «Copia diaria» → Run workflow.
+name: Copia diaria
+
+on:
+  schedule:
+    - cron: "30 2 * * *"      # 03:30 en invierno, 04:30 en verano (hora de Madrid)
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: copia-diaria
+  cancel-in-progress: false
+
+jobs:
+  copia:
+    if: ${{ vars.CASA_URL != '' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      CASA_URL: ${{ vars.CASA_URL }}
+      CODIGO_CASA: ${{ secrets.CODIGO_CASA }}
+    steps:
+      - name: Comprobar que el repositorio es privado
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          privado=$(gh api "repos/${GITHUB_REPOSITORY}" --jq .private)
+          if [ "$privado" != "true" ]; then
+            echo "::error::Este repositorio es público: la copia publicaría los datos de la casa. Hazlo privado o borra la variable CASA_URL."
+            exit 1
+          fi
+
+      - name: Descargar la copia
+        run: |
+          set -euo pipefail
+          # El plan gratis de Render se duerme: se reintenta para darle tiempo
+          # a despertar (tarda hasta un minuto).
+          code=000
+          for i in 1 2 3; do
+            code=$(curl -sS -o copia.json -w '%{http_code}' --max-time 120 \
+              -H "X-Casa: ${CODIGO_CASA}" -H "X-Perfil: papas" \
+              "$CASA_URL/api/backup") || code=000
+            # Un 401 no se arregla reintentando (y cada intento cuenta para el
+            # bloqueo por fuerza bruta): se corta y se avisa.
+            if [ "$code" = "200" ] || [ "$code" = "401" ]; then break; fi
+            echo "Intento $i: HTTP $code. Reintentando…"
+            sleep 20
+          done
+          if [ "$code" = "401" ]; then
+            echo "::error::La casa pide código y el secreto CODIGO_CASA falta o no coincide con el de Render."
+            exit 1
+          fi
+          if [ "$code" != "200" ]; then
+            echo "::error::No se pudo descargar la copia (HTTP $code)."
+            exit 1
+          fi
+          # Que sea de verdad una copia de la casa y no una página de error.
+          node -e "const s=require('./copia.json'); if(!Array.isArray(s.members)||!Array.isArray(s.fixedTasks)) process.exit(1); console.log('Copia válida:', JSON.stringify(s).length, 'bytes')"
+
+      - name: Guardarla en la rama «copias»
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          dia=$(TZ=Europe/Madrid date +%F)
+          git init -q copias-repo
+          cd copias-repo
+          git remote add origin "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          if git fetch -q --depth 1 origin copias; then
+            git checkout -q -b copias FETCH_HEAD
+          else
+            # Primera vez: rama nueva, sin nada del código.
+            git checkout -q --orphan copias
+            printf '%s\n' "# Copias de la casa" "" \
+              "Una copia del estado de la casa por día, guardada cada noche por" \
+              "\`.github/workflows/copia-diaria.yml\` (rama \`main\`)." "" \
+              "Para restaurar una: descárgala y, en el Dashboard de los Papás," \
+              "Economía → Copias de seguridad → «Restaurar desde archivo»." > README.md
+          fi
+          mkdir -p copias
+          cp ../copia.json "copias/$dia.json"
+          cp ../copia.json ultima.json
+          git add -A
+          if git diff --cached --quiet; then
+            echo "Sin cambios desde la última copia."
+            exit 0
+          fi
+          git -c user.name="copia-diaria" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
+            commit -q -m "copia $dia"
+          git push -q origin copias
+          echo "Guardada copias/$dia.json"
